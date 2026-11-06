@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air Draw</title>
+<style>
+:root{--bg:#0a0d16;--panel:#121726;--panel2:#1a2033;--line:#283049;--text:#eef1fb;--muted:#8d96b3;--accent:#5eead4;--accent-ink:#04201c;--danger:#fb7185}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans Bengali","Hind Siliguri",Roboto,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+
+/* toolbar */
+#bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
+.grp{display:flex;align-items:center;gap:6px}
+.grp+.grp{padding-left:14px;border-left:1px solid var(--line)}
+button,select{font:inherit;font-size:13px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 11px;cursor:pointer}
+button:hover,select:hover{border-color:#3c4768}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.rec{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.sw{width:24px;height:24px;border-radius:50%;padding:0;border:2px solid transparent}
+.sw.sel{border-color:#fff;box-shadow:0 0 0 2px var(--bg) inset}
+input[type=color]{width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer}
+input[type=range]{width:90px;accent-color:var(--accent)}
+.lbl{font-size:12px;color:var(--muted)}
+
+/* stage */
+#area{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px}
+#stage{position:relative;width:640px;height:360px;background:#05070d;border:1px solid var(--line);border-radius:14px;overflow:hidden;touch-action:none;cursor:crosshair}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;transform:scaleX(-1);filter:brightness(.6)}
+#stage.board #video{visibility:hidden}
+canvas{position:absolute;inset:0;pointer-events:none}
+#speech{position:absolute;z-index:3;max-height:46%;overflow-y:auto;scrollbar-width:none;padding:10px 14px;border-radius:12px;background:rgba(0,0,0,.35);cursor:move;line-height:1.35;text-shadow:0 2px 8px rgba(0,0,0,.8);word-break:break-word;touch-action:none;user-select:none}
+#speech::-webkit-scrollbar{display:none}
+#speech .int{opacity:.55}
+#speech:empty,#speech.empty{display:none}
+#hud{position:absolute;left:12px;bottom:12px;z-index:4;padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.6);font-size:13px;border:1px solid rgba(255,255,255,.12);pointer-events:none}
+#mic-pill{position:absolute;right:12px;bottom:12px;z-index:4;padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.6);font-size:13px;border:1px solid rgba(255,255,255,.12);pointer-events:none;display:none}
+#mic-pill.show{display:block}
+#mic-pill i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:7px;animation:pulse 1.1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+#toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:6;max-width:90%;padding:9px 16px;border-radius:10px;background:#2a1620;border:1px solid var(--danger);color:#ffd9df;font-size:14px;display:none;text-align:center}
+
+/* welcome */
+#welcome{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,7,13,.86);backdrop-filter:blur(6px)}
+#welcome .card{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+#welcome h1{margin:0 0 6px;font-size:30px;letter-spacing:-.01em}
+#welcome p{margin:0 0 18px;color:var(--muted);line-height:1.55}
+.gest{display:grid;gap:10px;margin:0 0 22px;padding:0;list-style:none}
+.gest li{display:flex;gap:14px;align-items:center;padding:10px 14px;background:var(--panel2);border-radius:12px;border:1px solid var(--line)}
+.gest b{font-size:26px;width:34px;text-align:center}
+.gest span{font-size:14px;line-height:1.4}
+.gest em{font-style:normal;color:var(--accent);font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.big{padding:13px 20px;font-size:15px;border-radius:12px}
+.hint{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.5}
+@media(max-width:700px){.grp+.grp{border-left:0;padding-left:0}#bar{gap:8px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar">
+    <div class="grp">
+      <button id="btnCam">Start camera</button>
+      <button id="btnMic">Mic: off</button>
+      <select id="lang" title="Speech language" aria-label="Speech language">
+        <option value="bn-BD">বাংলা</option>
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="hi-IN">हिन्दी</option>
+      </select>
+    </div>
+    <div class="grp" id="swatches"></div>
+    <div class="grp">
+      <input type="color" id="colorPick" value="#5eead4" title="Custom colour" aria-label="Custom colour">
+      <span class="lbl">Size</span><input type="range" id="size" min="2" max="30" value="6" aria-label="Brush size">
+    </div>
+    <div class="grp">
+      <button id="toolPen" class="on">Pen</button>
+      <button id="toolEraser">Eraser</button>
+      <button id="btnUndo">Undo</button>
+      <button id="btnClear">Clear drawing</button>
+    </div>
+    <div class="grp">
+      <button id="btnTextClear">Clear text</button>
+      <button id="fMinus" aria-label="Smaller text">A−</button>
+      <button id="fPlus" aria-label="Bigger text">A+</button>
+    </div>
+    <div class="grp">
+      <button id="btnBg">Background: camera</button>
+      <button id="btnSkel">Hand: hide</button>
+      <button id="btnSave">Save PNG</button>
+    </div>
+  </div>
+
+  <div id="area">
+    <div id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="ink"></canvas>
+      <canvas id="fx"></canvas>
+      <div id="speech" class="empty" aria-live="polite"><span class="fin"></span><span class="int"></span></div>
+      <div id="hud">Camera off</div>
+      <div id="mic-pill"><i></i>Listening…</div>
+      <div id="toast" role="alert"></div>
+    </div>
+  </div>
+</div>
+
+<div id="welcome">
+  <div class="card">
+    <h1>Air Draw</h1>
+    <p>Hater ongguli diye hawa-te ankun, ar mukhe bolle shetao screen-e likha hobe. Camera ar mic-er permission dite hobe.</p>
+    <ul class="gest">
+      <li><b>☝️</b><span><em>One finger</em> (only index finger up): draw in the air</span></li>
+      <li><b>✌️</b><span><em>Two fingers</em>: move the pointer without drawing</span></li>
+      <li><b>✋</b><span><em>Open palm</em>: erase where your palm is</span></li>
+      <li><b>✊</b><span><em>Fist</em>: pause</span></li>
+    </ul>
+    <div class="row">
+      <button id="goBoth" class="on big">Start camera + mic</button>
+      <button id="goMouse" class="big">Use mouse / touch only</button>
+    </div>
+    <p class="hint">Voice text works in Chrome or Edge. Mouse, touch and pen can always draw on the board too. Drag the spoken text box to move it.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous" onerror="window.__handsFailed=true"></script>
+<script>
+(function () {
+  'use strict';
+  var HANDS_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage'), video = $('video'), ink = $('ink'), fx = $('fx');
+  var speechBox = $('speech'), finEl = speechBox.querySelector('.fin'), intEl = speechBox.querySelector('.int');
+  var hud = $('hud'), micPill = $('mic-pill'), toastEl = $('toast');
+  var ictx = ink.getContext('2d'), fctx = fx.getContext('2d');
+
+  var S = { color: '#5eead4', size: 6, tool: 'pen', eraser: 46, bg: 'camera', skeleton: false, fontSize: 30 };
+  var strokes = [], cur = null;
+  var W = 640, H = 360, dpr = 1, vAspect = 16 / 9;
+  var box = { x: 0.03, y: 0.04, w: 0.55 };
+
+  /* ---------- helpers ---------- */
+  var toastTimer;
+  function toast(msg, ms) {
+    toastEl.textContent = msg; toastEl.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.style.display = 'none'; }, ms || 6000);
+  }
+  function setHud(t) { hud.textContent = t; }
+
+  /* ---------- layout ---------- */
+  function layout() {
+    var area = $('area');
+    var aw = area.clientWidth - 20, ah = area.clientHeight - 20;
+    var w = aw, h = w / vAspect;
+    if (h > ah) { h = ah; w = h * vAspect; }
+    w = Math.max(200, Math.floor(w)); h = Math.max(120, Math.floor(h));
+    stage.style.width = w + 'px'; stage.style.height = h + 'px';
+    W = w; H = h; dpr = Math.min(window.devicePixelRatio || 1, 2);
+    [ink, fx].forEach(function (c) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+      c.style.width = w + 'px'; c.style.height = h + 'px';
+    });
+    redraw(); applyText();
+  }
+  window.addEventListener('resize', layout);
+
+  /* ---------- drawing ---------- */
+  function strokeStyleFor(s) {
+    ictx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
+    ictx.strokeStyle = s.color; ictx.fillStyle = s.color;
+    ictx.lineWidth = s.sizeN * W * dpr; ictx.lineCap = 'round'; ictx.lineJoin = 'round';
+  }
+  function dot(s, p) {
+    ictx.save(); strokeStyleFor(s);
+    ictx.beginPath(); ictx.arc(p[0] * W * dpr, p[1] * H * dpr, s.sizeN * W * dpr / 2, 0, Math.PI * 2); ictx.fill(); ictx.restore();
+  }
+  function seg(s, a, b) {
+    ictx.save(); strokeStyleFor(s);
+    ictx.beginPath(); ictx.moveTo(a[0] * W * dpr, a[1] * H * dpr); ictx.lineTo(b[0] * W * dpr, b[1] * H * dpr); ictx.stroke(); ictx.restore();
+  }
+  function redraw() {
+    ictx.clearRect(0, 0, ink.width, ink.height);
+    strokes.forEach(function (s) {
+      if (s.pts.length === 1) dot(s, s.pts[0]);
+      else for (var i = 1; i < s.pts.length; i++) seg(s, s.pts[i - 1], s.pts[i]);
+    });
+  }
+  function startStroke(src, mode, p) {
+    var size = mode === 'erase' ? S.eraser : S.size;
+    cur = { src: src, mode: mode, color: S.color, sizeN: size / 640, pts: [p] };
+    strokes.push(cur); dot(cur, p);
+  }
+  function addPoint(p) {
+    var last = cur.pts[cur.pts.length - 1];
+    if (Math.hypot((p[0] - last[0]) * W, (p[1] - last[1]) * H) < 1.5) return;
+    cur.pts.push(p); seg(cur, last, p);
+  }
+  function endStroke() { cur = null; }
+  function undo() { endStroke(); strokes.pop(); redraw(); }
+  function clearInk() { endStroke(); strokes = []; redraw(); }
+
+  /* mouse / touch / pen */
+  function norm(e) {
+    var r = stage.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+  }
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.target === speechBox || speechBox.contains(e.target)) return;
+    if (cur) return;
+    stage.setPointerCapture(e.pointerId);
+    startStroke('ptr', S.tool === 'eraser' ? 'erase' : 'draw', norm(e));
+  });
+  stage.addEventListener('pointermove', function (e) { if (cur && cur.src === 'ptr') addPoint(norm(e)); });
+  function ptrEnd() { if (cur && cur.src === 'ptr') endStroke(); }
+  stage.addEventListener('pointerup', ptrEnd);
+  stage.addEventListener('pointercancel', ptrEnd);
+
+  /* ---------- hand tracking ---------- */
+  var hands = null, stream = null, running = false, busy = false, gotFirst = false;
+  var pend = 'idle', pendN = 0, mode = 'idle', miss = 0, sm = null;
+
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  function up(lm, tip, pip) { return dist(lm[tip], lm[0]) > dist(lm[pip], lm[0]) * 1.12; }
+  function classify(lm) {
+    var i = up(lm, 8, 6), m = up(lm, 12, 10), r = up(lm, 16, 14), p = up(lm, 20, 18);
+    if (i && m && r && p) return 'erase';
+    if (i && !m && !r && !p) return 'draw';
+    if (i && m && !r && !p) return 'move';
+    return 'idle';
+  }
+  var HUD_TEXT = { draw: 'Drawing ☝️', move: 'Moving ✌️', erase: 'Erasing ✋', idle: 'Paused ✊' };
+  function setMode(m) {
+    if (cur && cur.src === 'hand') endStroke();
+    mode = m; setHud(HUD_TEXT[m] || 'Show your hand');
+  }
+  function onResults(res) {
+    if (!gotFirst) { gotFirst = true; setHud('Show your hand'); }
+    fctx.clearRect(0, 0, fx.width, fx.height);
+    var lm = res.multiHandLandmarks && res.multiHandLandmarks[0];
+    if (!lm) {
+      if (++miss > 6) { if (mode !== 'none') { setMode('none'); setHud('Show your hand'); } sm = null; }
+      return;
+    }
+    miss = 0;
+    var m = classify(lm);
+    if (m === pend) pendN++; else { pend = m; pendN = 1; }
+    if (pendN >= 3 && m !== mode) setMode(m);
+
+    var pt = mode === 'erase' ? lm[9] : lm[8];
+    var x = 1 - pt.x, y = pt.y;
+    if (!sm) sm = { x: x, y: y }; else { sm.x += (x - sm.x) * 0.5; sm.y += (y - sm.y) * 0.5; }
+    var p = [sm.x, sm.y];
+
+    if (mode === 'draw' || mode === 'erase') {
+      var want = mode === 'draw' ? 'draw' : 'erase';
+      if (!cur || cur.src !== 'hand') startStroke('hand', want, p); else addPoint(p);
+    }
+    drawCursor(lm);
+  }
+  function drawCursor(lm) {
+    var px = sm.x * W * dpr, py = sm.y * H * dpr;
+    if (S.skeleton && window.HAND_CONNECTIONS) {
+      fctx.save(); fctx.strokeStyle = 'rgba(255,255,255,.55)'; fctx.lineWidth = 2 * dpr;
+      window.HAND_CONNECTIONS.forEach(function (c) {
+        var a = lm[c[0]], b = lm[c[1]];
+        fctx.beginPath(); fctx.moveTo((1 - a.x) * W * dpr, a.y * H * dpr); fctx.lineTo((1 - b.x) * W * dpr, b.y * H * dpr); fctx.stroke();
+      });
+      fctx.restore();
+    }
+    fctx.save(); fctx.lineWidth = 2 * dpr;
+    if (mode === 'draw') {
+      fctx.fillStyle = S.color; fctx.strokeStyle = '#fff';
+      fctx.beginPath(); fctx.arc(px, py, Math.max(5, S.size * W / 640 / 2) * dpr, 0, Math.PI * 2); fctx.fill(); fctx.stroke();
+    } else if (mode === 'erase') {
+      fctx.strokeStyle = '#fff'; fctx.setLineDash([6 * dpr, 5 * dpr]);
+      fctx.beginPath(); fctx.arc(px, py, S.eraser * W / 640 / 2 * dpr, 0, Math.PI * 2); fctx.stroke();
+    } else {
+      fctx.strokeStyle = mode === 'move' ? '#5eead4' : 'rgba(255,255,255,.5)';
+      fctx.beginPath(); fctx.arc(px, py, 10 * dpr, 0, Math.PI * 2); fctx.stroke();
+    }
+    fctx.restore();
+  }
+  async function loop() {
+    if (!running) return;
+    if (video.readyState >= 2 && !busy) {
+      busy = true;
+      try { await hands.send({ image: video }); } catch (e) { /* skip frame */ }
+      busy = false;
+    }
+    requestAnimationFrame(loop);
+  }
+  async function startCamera() {
+    if (running) return true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser or page. Use https or localhost.'); return false; }
+    setHud('Starting camera…');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+    } catch (e) {
+      setHud('Camera off');
+      toast(e && e.name === 'NotAllowedError' ? 'Camera permission was blocked. Allow it in the address bar and try again.' : 'Could not open the camera. You can still draw with the mouse.');
+      return false;
+    }
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) {}
+    vAspect = (video.videoWidth && video.videoHeight) ? video.videoWidth / video.videoHeight : 16 / 9;
+    layout();
+    if (!window.Hands || window.__handsFailed) {
+      setHud('Camera on (no hand tracking)');
+      toast('Hand tracking library could not load. Check your internet connection and reload the page. Mouse drawing still works.');
+      $('btnCam').textContent = 'Stop camera'; $('btnCam').classList.add('on');
+      return true;
+    }
+    setHud('Loading hand tracking…');
+    hands = new window.Hands({ locateFile: function (f) { return HANDS_BASE + f; } });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+    hands.onResults(onResults);
+    running = true; gotFirst = false; mode = 'none'; miss = 0; sm = null;
+    $('btnCam').textContent = 'Stop camera'; $('btnCam').classList.add('on');
+    loop();
+    return true;
+  }
+  function stopCamera() {
+    running = false; endStroke();
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; video.srcObject = null; fctx.clearRect(0, 0, fx.width, fx.height);
+    if (hands && hands.close) { try { hands.close(); } catch (e) {} }
+    hands = null; mode = 'idle';
+    $('btnCam').textContent = 'Start camera'; $('btnCam').classList.remove('on');
+    setHud('Camera off');
+  }
+
+  /* ---------- speech to text ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null, wantListen = false, finalText = '';
+  function applyText() {
+    speechBox.style.fontSize = (S.fontSize * W / 640) + 'px';
+    speechBox.style.left = (box.x * 100) + '%'; speechBox.style.top = (box.y * 100) + '%'; speechBox.style.width = (box.w * 100) + '%';
+  }
+  function renderText(interim) {
+    finEl.textContent = finalText; intEl.textContent = interim || '';
+    speechBox.classList.toggle('empty', !finalText && !interim);
+    speechBox.scrollTop = speechBox.scrollHeight;
+  }
+  function startListening() {
+    if (!SR) { toast('Voice typing is not supported in this browser. Please use Chrome or Edge.'); return false; }
+    if (rec) return true;
+    rec = new SR();
+    rec.lang = $('lang').value; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = function (ev) {
+      var interim = '';
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var t = ev.results[i][0].transcript;
+        if (ev.results[i].isFinal) finalText += (finalText && !/\s$/.test(finalText) ? ' ' : '') + t.trim();
+        else interim += t;
+      }
+      renderText(interim ? (finalText ? ' ' : '') + interim : '');
+    };
+    rec.onerror = function (ev) {
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { wantListen = false; toast('Microphone permission was blocked. Allow it in the address bar and try again.'); }
+      else if (ev.error === 'network') { toast('Voice typing needs an internet connection.'); }
+      else if (ev.error === 'language-not-supported') { wantListen = false; toast('This language is not supported by your browser.'); }
+    };
+    rec.onend = function () {
+      rec = null;
+      if (wantListen) setTimeout(function () { if (wantListen) startListening(); }, 250);
+      else syncMic();
+    };
+    try { rec.start(); wantListen = true; } catch (e) { rec = null; return false; }
+    syncMic(); return true;
+  }
+  function stopListening() { wantListen = false; if (rec) { try { rec.stop(); } catch (e) {} } syncMic(); renderText(''); }
+  function syncMic() {
+    var on = wantListen;
+    $('btnMic').textContent = on ? 'Mic: listening' : 'Mic: off';
+    $('btnMic').classList.toggle('rec', on);
+    micPill.classList.toggle('show', on);
+  }
+
+  /* drag the text box */
+  (function () {
+    var drag = null;
+    speechBox.addEventListener('pointerdown', function (e) {
+      var r = stage.getBoundingClientRect();
+      drag = { dx: e.clientX - (r.left + box.x * r.width), dy: e.clientY - (r.top + box.y * r.height) };
+      speechBox.setPointerCapture(e.pointerId); e.stopPropagation();
+    });
+    speechBox.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var r = stage.getBoundingClientRect();
+      box.x = Math.max(0, Math.min(1 - box.w, (e.clientX - drag.dx - r.left) / r.width));
+      box.y = Math.max(0, Math.min(0.9, (e.clientY - drag.dy - r.top) / r.height));
+      applyText();
+    });
+    function end() { drag = null; }
+    speechBox.addEventListener('pointerup', end); speechBox.addEventListener('pointercancel', end);
+  })();
+
+  /* ---------- save ---------- */
+  function save() {
+    var k = 2, c = document.createElement('canvas');
+    c.width = Math.round(W * k); c.height = Math.round(H * k);
+    var x = c.getContext('2d');
+    x.fillStyle = '#05070d'; x.fillRect(0, 0, c.width, c.height);
+    if (S.bg === 'camera' && video.videoWidth && stream) {
+      x.save(); x.translate(c.width, 0); x.scale(-1, 1);
+      if ('filter' in x) x.filter = 'brightness(.6)';
+      x.drawImage(video, 0, 0, c.width, c.height); x.restore();
+    }
+    x.drawImage(ink, 0, 0, c.width, c.height);
+    var text = (finalText + ' ' + (intEl.textContent || '')).trim();
+    if (text) {
+      var fs = S.fontSize * W / 640 * k, pad = 14 * k, maxW = box.w * c.width - pad * 2;
+      x.font = fs + 'px system-ui,"Noto Sans Bengali","Hind Siliguri",sans-serif';
+      var words = text.split(/\s+/), lines = [], line = '';
+      words.forEach(function (w) {
+        var t = line ? line + ' ' + w : w;
+        if (x.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+      });
+      if (line) lines.push(line);
+      var lh = fs * 1.35, maxLines = Math.max(1, Math.floor((c.height * 0.46 - pad * 2) / lh));
+      lines = lines.slice(-maxLines);
+      var bx = box.x * c.width, by = box.y * c.height, bh = lines.length * lh + pad * 2;
+      x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(bx, by, box.w * c.width, bh);
+      x.fillStyle = '#fff'; x.textBaseline = 'top'; x.shadowColor = 'rgba(0,0,0,.8)'; x.shadowBlur = 8 * k;
+      lines.forEach(function (l, i) { x.fillText(l, bx + pad, by + pad + i * lh + (lh - fs) / 2); });
+    }
+    c.toBlob(function (b) {
+      var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'air-draw.png';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    }, 'image/png');
+  }
+
+  /* ---------- UI wiring ---------- */
+  var COLORS = ['#5eead4', '#fbbf24', '#fb7185', '#60a5fa', '#a78bfa', '#ffffff'];
+  var swWrap = $('swatches');
+  COLORS.forEach(function (c) {
+    var b = document.createElement('button'); b.className = 'sw'; b.style.background = c; b.setAttribute('aria-label', 'Colour ' + c);
+    b.addEventListener('click', function () { setColor(c); }); swWrap.appendChild(b);
+  });
+  function setColor(c) {
+    S.color = c; $('colorPick').value = c;
+    Array.prototype.forEach.call(swWrap.children, function (b, i) { b.classList.toggle('sel', COLORS[i] === c); });
+    if (S.tool === 'eraser') setTool('pen');
+  }
+  function setTool(t) { S.tool = t; $('toolPen').classList.toggle('on', t === 'pen'); $('toolEraser').classList.toggle('on', t === 'eraser'); }
+  $('colorPick').addEventListener('input', function (e) { setColor(e.target.value); });
+  $('size').addEventListener('input', function (e) { S.size = +e.target.value; S.eraser = S.size * 6 + 14; });
+  $('toolPen').addEventListener('click', function () { setTool('pen'); });
+  $('toolEraser').addEventListener('click', function () { setTool('eraser'); });
+  $('btnUndo').addEventListener('click', undo);
+  $('btnClear').addEventListener('click', clearInk);
+  $('btnTextClear').addEventListener('click', function () { finalText = ''; renderText(''); });
+  $('fMinus').addEventListener('click', function () { S.fontSize = Math.max(14, S.fontSize - 4); applyText(); });
+  $('fPlus').addEventListener('click', function () { S.fontSize = Math.min(90, S.fontSize + 4); applyText(); });
+  $('btnBg').addEventListener('click', function () {
+    S.bg = S.bg === 'camera' ? 'board' : 'camera';
+    stage.classList.toggle('board', S.bg === 'board');
+    $('btnBg').textContent = 'Background: ' + S.bg;
+  });
+  $('btnSkel').addEventListener('click', function () {
+    S.skeleton = !S.skeleton; $('btnSkel').textContent = 'Hand: ' + (S.skeleton ? 'show' : 'hide'); $('btnSkel').classList.toggle('on', S.skeleton);
+  });
+  $('btnSave').addEventListener('click', save);
+  $('btnCam').addEventListener('click', function () { if (running || stream) stopCamera(); else startCamera(); });
+  $('btnMic').addEventListener('click', function () { if (wantListen) stopListening(); else startListening(); });
+  $('lang').addEventListener('change', function () { if (wantListen) { var r = rec; stopListening(); setTimeout(startListening, r ? 400 : 50); } });
+  $('goBoth').addEventListener('click', function () {
+    $('welcome').style.display = 'none'; startListening(); startCamera();
+  });
+  $('goMouse').addEventListener('click', function () { $('welcome').style.display = 'none'; });
+  window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  });
+
+  setColor(S.color); layout(); renderText('');
+  if (!SR) $('btnMic').title = 'Voice typing needs Chrome or Edge';
+})();
+</script>
+</body>
+</html>
